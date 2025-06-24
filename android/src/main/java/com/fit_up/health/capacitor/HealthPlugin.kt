@@ -404,8 +404,7 @@ class HealthPlugin : Plugin() {
                     workoutObject.put("id", workout.metadata.id)
                     workoutObject.put(
                         "sourceName",
-                        Optional.ofNullable(workout.metadata.device?.model).getOrDefault("") +
-                                Optional.ofNullable(workout.metadata.device?.model).getOrDefault("")
+                        Optional.ofNullable(workout.metadata.device?.model).orElse("")
                     )
                     workoutObject.put("sourceBundleId", workout.metadata.dataOrigin.packageName)
                     workoutObject.put("deviceManufacturer", workout.metadata.device?.manufacturer ?: "")
@@ -549,11 +548,7 @@ class HealthPlugin : Plugin() {
                     sleepObject.put("title", record.title ?: "")
                     sleepObject.put("notes", record.notes ?: "")
                     sleepObject.put("sourceBundleId", record.metadata.dataOrigin.packageName)
-                    sleepObject.put(
-                        "sourceName",
-                        Optional.ofNullable(record.metadata.device?.model).getOrDefault("") +
-                                Optional.ofNullable(record.metadata.device?.model).getOrDefault("")
-                    )
+                    sleepObject.put("sourceName", record.metadata.device?.model ?: "")
                     sleepObject.put("deviceManufacturer", record.metadata.device?.manufacturer ?: "")
                     
                     val duration = (record.endTime.epochSecond - record.startTime.epochSecond) / 60.0
@@ -653,7 +648,7 @@ class HealthPlugin : Plugin() {
                         aggregatedObject.put("value", aggregated.value)
                         val durationMinutes = (aggregated.endDate.toInstant(ZoneOffset.UTC).epochSecond - 
                                               aggregated.startDate.toInstant(ZoneOffset.UTC).epochSecond) / 60.0
-                        aggregatedObject.put("duration", durationMinutes)
+                        aggregatedObject.put("duration", Math.ceil(durationMinutes).toInt())
                         aggregatedObject.put("sourceName", metadata.sourceName)
                         aggregatedObject.put("sourceBundleId", metadata.sourceBundleId)
                         aggregatedObject.put("deviceManufacturer", metadata.deviceManufacturer)
