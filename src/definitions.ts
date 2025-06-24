@@ -63,6 +63,12 @@ export interface HealthPlugin {
   queryHeartRate(request: QueryHeartRateRequest): Promise<QueryHeartRateResponse>;
 
   /**
+   * Query HRV (Heart Rate Variability) data for a specific time range
+   * @param request
+   */
+  queryHRV(request: QueryHRVRequest): Promise<QueryHRVResponse>;
+
+  /**
    * Query sleep data for a specific time range
    * @param request
    */
@@ -82,6 +88,7 @@ export declare type HealthPermission =
   | 'READ_TOTAL_CALORIES'
   | 'READ_DISTANCE'
   | 'READ_HEART_RATE'
+  | 'READ_HRV'
   | 'READ_ROUTE'
   | 'READ_MINDFULNESS'
   | 'READ_SLEEP';
@@ -162,6 +169,24 @@ export interface QueryHeartRateRequest {
 
 export interface QueryHeartRateResponse {
   heartRateRecords: HeartRateRecord[];
+}
+
+export interface HRVRecord {
+  id: string;
+  sourceBundleId: string;
+  sourceName: string;
+  deviceManufacturer: string;
+  timestamp: string;
+  hrvValue: number;
+}
+
+export interface QueryHRVRequest {
+  startDate: string;
+  endDate: string;
+}
+
+export interface QueryHRVResponse {
+  hrvRecords: HRVRecord[];
 }
 
 export interface SleepSession {
