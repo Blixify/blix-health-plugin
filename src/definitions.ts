@@ -79,6 +79,12 @@ export interface HealthPlugin {
    * @param request
    */
   querySteps(request: QueryStepsRequest): Promise<QueryStepsResponse>;
+
+  /**
+   * Query oxygen saturation data for a specific time range
+   * @param request
+   */
+  queryOxygenSaturation(request: QueryOxygenSaturationRequest): Promise<QueryOxygenSaturationResponse>;
 }
 
 export declare type HealthPermission =
@@ -91,7 +97,8 @@ export declare type HealthPermission =
   | 'READ_HRV'
   | 'READ_ROUTE'
   | 'READ_MINDFULNESS'
-  | 'READ_SLEEP';
+  | 'READ_SLEEP'
+  | 'READ_OXYGEN_SATURATION';
 
 export interface PermissionsRequest {
   permissions: HealthPermission[];
@@ -240,4 +247,22 @@ export interface AggregatedSampleWithMetadata extends AggregatedSample {
   sourceBundleId: string;
   deviceManufacturer: string;
   duration: number;
+}
+
+export interface QueryOxygenSaturationRequest {
+  startDate: string;
+  endDate: string;
+}
+
+export interface QueryOxygenSaturationResponse {
+  oxygenSaturationRecords: OxygenSaturationRecord[];
+}
+
+export interface OxygenSaturationRecord {
+  id: string;
+  sourceBundleId: string;
+  sourceName: string;
+  deviceManufacturer: string;
+  timestamp: string;
+  percentage: number;
 }
