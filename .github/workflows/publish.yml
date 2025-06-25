@@ -31,8 +31,8 @@ jobs:
       - name: Build the project
         run: npm run build # adjust the build command if necessary
 
-      - name: Configure npm for authentication
-        run: echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
+      # - name: Configure npm for authentication
+      #   run: echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
 
       # - name: Get package version
       #   id: get_version
