@@ -15,14 +15,14 @@
     "Package.swift",
     "BlixHealthPlugin.podspec"
   ],
-  "author": "Martin",
+  "author": "Blixify",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/mley/capacitor-health.git"
+    "url": "git+https://github.com/Blixify/blix-health-plugin.git"
   },
   "bugs": {
-    "url": "https://github.com/mley/capacitor-health/issues"
+    "url": "https://github.com/Blixify/blix-health-plugin/issues"
   },
   "keywords": [
     "capacitor",
