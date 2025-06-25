@@ -1,0 +1,126 @@
+# Development files
+src/
+tsconfig.json
+rollup.config.js
+.eslintignore
+.prettierignore
+.github/
+
+# Build artifacts (these are included in the package via the "files" field)
+# dist/ is explicitly included in package.json
+
+# Development dependencies and tools
+node_modules/
+yarn.lock
+package-lock.json
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+*.lcov
+
+# nyc test coverage
+.nyc_output
+
+# Dependency directories
+jspm_packages/
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# dotenv environment variables file
+.env
+.env.test
+.env.production
+
+# parcel-bundler cache (https://parceljs.org/)
+.cache
+.parcel-cache
+
+# next.js build output
+.next
+
+# nuxt.js build output
+.nuxt
+
+# vuepress build output
+.vuepress/dist
+
+# Serverless directories
+.serverless
+
+# FuseBox cache
+.fusebox/
+
+# DynamoDB Local files
+.dynamodb/
+
+# TernJS port file
+.tern-port
+
+# Test files
+test/
+tests/
+*.test.js
+*.test.ts
+*.spec.js
+*.spec.ts
+
+# Documentation that's not needed in the package
+CONTRIBUTING.md
+
+# Android specific (keep only what's needed)
+android/gradle/
+android/gradlew
+android/gradlew.bat
+android/gradle.properties
+android/settings.gradle
+android/proguard-rules.pro
+android/src/main/res/
+android/src/main/AndroidManifest.xml
+
+# iOS specific (keep only what's needed)
+ios/Tests/
+ios/*.xcodeproj/
+ios/*.xcworkspace/
+ios/Podfile
+ios/Podfile.lock 
