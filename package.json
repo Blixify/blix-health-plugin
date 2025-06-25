@@ -13,7 +13,7 @@
     "ios/Sources",
     "ios/Tests",
     "Package.swift",
-    "CapacitorHealth.podspec"
+    "BlixHealthPlugin.podspec"
   ],
   "author": "Martin",
   "license": "MIT",
