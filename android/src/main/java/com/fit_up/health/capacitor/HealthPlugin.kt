@@ -36,12 +36,14 @@ import java.time.Instant
 import java.time.LocalDateTime
 import java.time.Period
 import java.time.ZoneId
+import java.time.ZoneOffset
 import java.util.Optional
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.jvm.optionals.getOrDefault
+import androidx.health.connect.client.records.SleepSessionRecord
 
 enum class CapHealthPermission {
-    READ_STEPS, READ_WORKOUTS, READ_HEART_RATE, READ_ROUTE, READ_ACTIVE_CALORIES, READ_TOTAL_CALORIES, READ_DISTANCE;
+    READ_STEPS, READ_WORKOUTS, READ_HEART_RATE, READ_ROUTE, READ_ACTIVE_CALORIES, READ_TOTAL_CALORIES, READ_DISTANCE, READ_SLEEP;
 
     companion object {
         fun from(s: String): CapHealthPermission? {
@@ -85,6 +87,10 @@ enum class CapHealthPermission {
         Permission(
             alias = "READ_ROUTE",
             strings = ["android.permission.health.READ_EXERCISE_ROUTE"]
+        ),
+        Permission(
+            alias = "READ_SLEEP",
+            strings = ["android.permission.health.READ_SLEEP"]
         )
     ]
 )
@@ -141,7 +147,8 @@ class HealthPlugin : Plugin() {
         Pair(CapHealthPermission.READ_ACTIVE_CALORIES, "android.permission.health.READ_ACTIVE_CALORIES_BURNED"),
         Pair(CapHealthPermission.READ_TOTAL_CALORIES, "android.permission.health.READ_TOTAL_CALORIES_BURNED"),
         Pair(CapHealthPermission.READ_DISTANCE, "android.permission.health.READ_DISTANCE"),
-        Pair(CapHealthPermission.READ_STEPS, "android.permission.health.READ_STEPS")
+        Pair(CapHealthPermission.READ_STEPS, "android.permission.health.READ_STEPS"),
+        Pair(CapHealthPermission.READ_SLEEP, "android.permission.health.READ_SLEEP")
     )
 
     // Check if a set of permissions are granted
@@ -333,7 +340,6 @@ class HealthPlugin : Plugin() {
             o.put("startDate", startDate)
             o.put("endDate", endDate)
             o.put("value", value)
-
             return o
 
         }
@@ -398,10 +404,10 @@ class HealthPlugin : Plugin() {
                     workoutObject.put("id", workout.metadata.id)
                     workoutObject.put(
                         "sourceName",
-                        Optional.ofNullable(workout.metadata.device?.model).getOrDefault("") +
-                                Optional.ofNullable(workout.metadata.device?.model).getOrDefault("")
+                        Optional.ofNullable(workout.metadata.device?.model).orElse("")
                     )
                     workoutObject.put("sourceBundleId", workout.metadata.dataOrigin.packageName)
+                    workoutObject.put("deviceManufacturer", workout.metadata.device?.manufacturer ?: "")
                     workoutObject.put("startDate", workout.startTime.toString())
                     workoutObject.put("endDate", workout.endTime.toString())
                     workoutObject.put("workoutType", exerciseTypeMapping.getOrDefault(workout.exerciseType, "OTHER"))
@@ -451,32 +457,219 @@ class HealthPlugin : Plugin() {
         }
     }
 
-    private suspend fun addWorkoutMetric(
-        workout: ExerciseSessionRecord,
-        jsWorkout: JSObject,
-        metricAndMapper: MetricAndMapper,
-    ): Boolean {
+    @PluginMethod
+    fun queryHeartRate(call: PluginCall) {
+        val startDate = call.getString("startDate")
+        val endDate = call.getString("endDate")
+        
+        if (startDate == null || endDate == null) {
+            call.reject("Missing required parameters: startDate or endDate")
+            return
+        }
 
-        if (hasPermission(metricAndMapper.permission)) {
+        val startDateTime = Instant.parse(startDate).atZone(ZoneId.systemDefault()).toLocalDateTime()
+        val endDateTime = Instant.parse(endDate).atZone(ZoneId.systemDefault()).toLocalDateTime()
+
+        CoroutineScope(Dispatchers.IO).launch {
             try {
-                val request = AggregateRequest(
-                    setOf(metricAndMapper.metric),
-                    TimeRangeFilter.Companion.between(workout.startTime, workout.endTime),
-                    emptySet()
-                )
-                val aggregation = healthConnectClient.aggregate(request)
-                val value = metricAndMapper.getValue(aggregation)
-                if(value != null) {
-                    jsWorkout.put(metricAndMapper.name, value)
-                    return true
+                if (!hasPermission(CapHealthPermission.READ_HEART_RATE)) {
+                    call.reject("Heart rate permission not granted")
+                    return@launch
                 }
+
+                val request = ReadRecordsRequest(
+                    HeartRateRecord::class, 
+                    TimeRangeFilter.between(startDateTime, endDateTime)
+                )
+                val heartRateRecords = healthConnectClient.readRecords(request)
+                val recordsArray = JSArray()
+                
+                for (record in heartRateRecords.records) {
+                    val recordObject = JSObject()
+                    recordObject.put("id", record.metadata.id)
+                    recordObject.put("sourceBundleId", record.metadata.dataOrigin.packageName)
+                    recordObject.put("sourceName", record.metadata.device?.model ?: "")
+                    recordObject.put("deviceManufacturer", record.metadata.device?.manufacturer ?: "")
+                    recordObject.put("startTime", record.startTime.toString())
+                    recordObject.put("endTime", record.endTime.toString())
+                    
+                    val samplesArray = JSArray()
+                    for (sample in record.samples) {
+                        val sampleObject = JSObject()
+                        sampleObject.put("timestamp", sample.time.toString())
+                        sampleObject.put("bpm", sample.beatsPerMinute)
+                        samplesArray.put(sampleObject)
+                    }
+                    recordObject.put("heartRateSamples", samplesArray)
+                    recordsArray.put(recordObject)
+                }
+                
+                val result = JSObject()
+                result.put("heartRateRecords", recordsArray)
+                call.resolve(result)
             } catch (e: Exception) {
-                Log.e(tag, "Error", e)
+                call.reject("Error querying heart rate data: ${e.message}")
             }
         }
-        return false;
     }
 
+    @PluginMethod
+    fun querySleep(call: PluginCall) {
+        val startDate = call.getString("startDate")
+        val endDate = call.getString("endDate")
+        
+        if (startDate == null || endDate == null) {
+            call.reject("Missing required parameters: startDate or endDate")
+            return
+        }
+
+        val startDateTime = Instant.parse(startDate).atZone(ZoneId.systemDefault()).toLocalDateTime()
+        val endDateTime = Instant.parse(endDate).atZone(ZoneId.systemDefault()).toLocalDateTime()
+
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                if (!hasPermission(CapHealthPermission.READ_SLEEP)) {
+                    call.reject("Sleep permission not granted")
+                    return@launch
+                }
+
+                val request = ReadRecordsRequest(
+                    SleepSessionRecord::class, 
+                    TimeRangeFilter.between(startDateTime, endDateTime)
+                )
+                val sleepRecords = healthConnectClient.readRecords(request)
+                val sleepArray = JSArray()
+                
+                for (record in sleepRecords.records) {
+                    val sleepObject = JSObject()
+                    sleepObject.put("id", record.metadata.id)
+                    sleepObject.put("startDate", record.startTime.toString())
+                    sleepObject.put("endDate", record.endTime.toString())
+                    sleepObject.put("title", record.title ?: "")
+                    sleepObject.put("notes", record.notes ?: "")
+                    sleepObject.put("sourceBundleId", record.metadata.dataOrigin.packageName)
+                    sleepObject.put("sourceName", record.metadata.device?.model ?: "")
+                    sleepObject.put("deviceManufacturer", record.metadata.device?.manufacturer ?: "")
+                    
+                    val duration = (record.endTime.epochSecond - record.startTime.epochSecond) / 60.0
+                    sleepObject.put("duration", duration)
+                    
+                    if (record.stages.isNotEmpty()) {
+                        val stagesArray = JSArray()
+                        for (stage in record.stages) {
+                            val stageObject = JSObject()
+                            stageObject.put("startDate", stage.startTime.toString())
+                            stageObject.put("endDate", stage.endTime.toString())
+                            stagesArray.put(stageObject)
+                        }
+                        sleepObject.put("stages", stagesArray)
+                    }
+                    sleepArray.put(sleepObject)
+                }
+
+                val result = JSObject()
+                result.put("sleep", sleepArray)
+                call.resolve(result)
+
+            } catch (e: Exception) {
+                call.reject("Error querying sleeps: ${e.message}")
+            }
+        }
+    }
+
+    @PluginMethod
+    fun querySteps(call: PluginCall) {
+        val startDate = call.getString("startDate")
+        val endDate = call.getString("endDate")
+        val bucket = call.getString("bucket")
+        
+        if (startDate == null || endDate == null) {
+            call.reject("Missing required parameters: startDate or endDate")
+            return
+        }
+
+        val startDateTime = Instant.parse(startDate).atZone(ZoneId.systemDefault()).toLocalDateTime()
+        val endDateTime = Instant.parse(endDate).atZone(ZoneId.systemDefault()).toLocalDateTime()
+
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                if (!hasPermission(CapHealthPermission.READ_STEPS)) {
+                    call.reject("Steps permission not granted")
+                    return@launch
+                }
+
+                val result = JSObject()
+                
+                if (bucket != null) {
+                    val period = when (bucket) {
+                        "day" -> Period.ofDays(1)
+                        else -> throw RuntimeException("Unsupported bucket: $bucket")
+                    }
+                    
+                    val aggregatedList = JSArray()
+                    
+                    val stepsMetric = getMetricAndMapper("steps")
+                    val stepsAggregated = queryAggregatedMetric(stepsMetric, TimeRangeFilter.between(startDateTime, endDateTime), period)
+   
+                    val request = ReadRecordsRequest(
+                        StepsRecord::class, 
+                        TimeRangeFilter.between(startDateTime, endDateTime)
+                    )
+                    val stepRecords = healthConnectClient.readRecords(request)
+    
+                    val metadataMap = mutableMapOf<String, MutableList<StepMetadata>>()
+                    
+                    for (record in stepRecords.records) {
+                        val recordStart = record.startTime.atZone(ZoneId.systemDefault()).toLocalDateTime()
+                        val recordEnd = record.endTime.atZone(ZoneId.systemDefault()).toLocalDateTime()
+                        
+                        for (aggregated in stepsAggregated) {
+                            if (recordStart < aggregated.endDate && recordEnd > aggregated.startDate) {
+                                val key = "${aggregated.startDate}_${aggregated.endDate}"
+                                if (!metadataMap.containsKey(key)) {
+                                    metadataMap[key] = mutableListOf()
+                                }
+                                metadataMap[key]?.add(StepMetadata(
+                                    record.metadata.device?.model ?: "",
+                                    record.metadata.dataOrigin.packageName,
+                                    record.metadata.device?.manufacturer ?: ""
+                                ))
+                            }
+                        }
+                    }
+                    
+                    for (aggregated in stepsAggregated) {
+                        val key = "${aggregated.startDate}_${aggregated.endDate}"
+                        val metadata = metadataMap[key]?.firstOrNull() ?: StepMetadata("", "", "")
+                        
+                        val aggregatedObject = JSObject()
+                        aggregatedObject.put("startDate", aggregated.startDate)
+                        aggregatedObject.put("endDate", aggregated.endDate)
+                        aggregatedObject.put("value", aggregated.value)
+                        val durationMinutes = (aggregated.endDate.toInstant(ZoneOffset.UTC).epochSecond - 
+                                              aggregated.startDate.toInstant(ZoneOffset.UTC).epochSecond) / 60.0
+                        aggregatedObject.put("duration", Math.ceil(durationMinutes).toInt())
+                        aggregatedObject.put("sourceName", metadata.sourceName)
+                        aggregatedObject.put("sourceBundleId", metadata.sourceBundleId)
+                        aggregatedObject.put("deviceManufacturer", metadata.deviceManufacturer)
+                        aggregatedList.put(aggregatedObject)
+                    }
+                    
+                    result.put("aggregatedData", aggregatedList)
+                } 
+                
+                call.resolve(result)
+            } catch (e: Exception) {
+                call.reject("Error querying step data: ${e.message}")
+            }
+        }
+    }
+
+    data class StepMetadata(
+        val sourceName: String,
+        val sourceBundleId: String,
+        val deviceManufacturer: String
+    )
 
     private suspend fun queryHeartRateForWorkout(startTime: Instant, endTime: Instant): JSArray {
         val request =
@@ -573,4 +766,39 @@ class HealthPlugin : Plugin() {
         83 to "YOGA"
     )
 
+    private val sleepTypeMapping = mapOf(
+        0 to "UNKNOWN",
+        1 to "AWAKE",
+        2 to "LIGHT",
+        3 to "DEEP",
+        4 to "REM"
+    )
+
+    private suspend fun addWorkoutMetric(
+        workout: ExerciseSessionRecord,
+        jsWorkout: JSObject,
+        metricAndMapper: MetricAndMapper,
+    ): Boolean {
+
+        if (hasPermission(metricAndMapper.permission)) {
+            try {
+                val request = AggregateRequest(
+                    setOf(metricAndMapper.metric),
+                    TimeRangeFilter.Companion.between(workout.startTime, workout.endTime),
+                    emptySet()
+                )
+                val aggregation = healthConnectClient.aggregate(request)
+                val value = metricAndMapper.getValue(aggregation)
+                if(value != null) {
+                    jsWorkout.put(metricAndMapper.name, value)
+                    return true
+                }
+            } catch (e: Exception) {
+                Log.e(tag, "Error", e)
+            }
+        }
+        return false;
+    }
+
 }
+

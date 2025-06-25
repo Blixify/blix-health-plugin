@@ -55,6 +55,24 @@ export interface HealthPlugin {
    * @param request
    */
   queryWorkouts(request: QueryWorkoutRequest): Promise<QueryWorkoutResponse>;
+
+  /**
+   * Query heart rate data for a specific time range
+   * @param request
+   */
+  queryHeartRate(request: QueryHeartRateRequest): Promise<QueryHeartRateResponse>;
+
+  /**
+   * Query sleep data for a specific time range
+   * @param request
+   */
+  querySleep(request: QuerySleepRequest): Promise<QuerySleepResponse>;
+
+  /**
+   * Query steps data with metadata
+   * @param request
+   */
+  querySteps(request: QueryStepsRequest): Promise<QueryStepsResponse>;
 }
 
 export declare type HealthPermission =
@@ -65,7 +83,8 @@ export declare type HealthPermission =
   | 'READ_DISTANCE'
   | 'READ_HEART_RATE'
   | 'READ_ROUTE'
-  | 'READ_MINDFULNESS';
+  | 'READ_MINDFULNESS'
+  | 'READ_SLEEP';
 
 export interface PermissionsRequest {
   permissions: HealthPermission[];
@@ -110,6 +129,7 @@ export interface Workout {
   steps?: number;
   calories: number;
   sourceBundleId: string;
+  deviceManufacturer: string;
   route?: RouteSample[];
   heartRate?: HeartRateSample[];
 }
@@ -125,8 +145,74 @@ export interface QueryAggregatedResponse {
   aggregatedData: AggregatedSample[];
 }
 
+export interface HeartRateRecord {
+  heartRateSamples: HeartRateSample[];
+  id: string;
+  sourceBundleId: string;
+  sourceName: string;
+  deviceManufacturer: string;
+  startTime: string;
+  endTime: string;
+}
+
+export interface QueryHeartRateRequest {
+  startDate: string;
+  endDate: string;
+}
+
+export interface QueryHeartRateResponse {
+  heartRateRecords: HeartRateRecord[];
+}
+
+export interface SleepSession {
+  id: string;
+  startDate: string;
+  endDate: string;
+  title: string;
+  notes: string;
+  duration: number;
+  sourceBundleId: string;
+  sourceName: string;
+  deviceManufacturer: string;
+  lastModifiedTime: string;
+  clientRecordId: string;
+  clientRecordVersion: number;
+  stages?: SleepStage[];
+}
+
+export interface SleepStage {
+  startDate: string;
+  endDate: string;
+}
+
+export interface QuerySleepRequest {
+  startDate: string;
+  endDate: string;
+}
+
+export interface QuerySleepResponse {
+  sleep: SleepSession[];
+}
+
 export interface AggregatedSample {
   startDate: string;
   endDate: string;
   value: number;
+}
+
+export interface QueryStepsRequest {
+  startDate: string;
+  endDate: string;
+  bucket: string;
+}
+
+export interface QueryStepsResponse {
+  aggregatedData: AggregatedSampleWithMetadata[];
+}
+
+export interface AggregatedSampleWithMetadata extends AggregatedSample {
+  sourceName: string;
+  sourceBundleId: string;
+  deviceManufacturer: string;
+  duration: number;
 }
