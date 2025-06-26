@@ -177,7 +177,7 @@ export interface SleepSession {
   lastModifiedTime: string;
   clientRecordId: string;
   clientRecordVersion: number;
-  stages?: SleepStage[];
+  sleepStage?: string;
 }
 
 export interface SleepStage {
