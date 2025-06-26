@@ -666,59 +666,58 @@ public class HealthPlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
     
-    @objc func queryHeartRate(_ call: CAPPluginCall) {
+   @objc func queryHeartRate(_ call: CAPPluginCall) {
         guard let startDateString = call.getString("startDate"),
-              let endDateString = call.getString("endDate"),
-              let startDate = self.isoDateFormatter.date(from: startDateString),
-              let endDate = self.isoDateFormatter.date(from: endDateString) else {
-            call.reject("Missing required parameters: startDate or endDate")
-            return
-        }
-        
+            let endDateString   = call.getString("endDate"),
+            let startDate       = self.isoDateFormatter.date(from: startDateString),
+            let endDate         = self.isoDateFormatter.date(from: endDateString) else {
+                call.reject("Missing required parameters: startDate or endDate")
+                return
+            }
+    
         guard let heartRateType = HKObjectType.quantityType(forIdentifier: .heartRate) else {
-            call.reject("Heart rate type unavailable")
+                call.reject("Heart rate type unavailable")
+                return
+            }
+    
+        let predicate = HKQuery.predicateForSamples(withStart: startDate, end: endDate, options: .strictStartDate)
+    
+        let query = HKSampleQuery(sampleType: heartRateType, predicate:  predicate,
+                              limit:      HKObjectQueryNoLimit,
+                              sortDescriptors: nil) { [weak self] _, samples, error in
+        guard let self = self else { return }
+        
+        if let error = error {
+            call.reject("Error querying heart-rate data: \(error.localizedDescription)")
             return
         }
         
-        let predicate = HKQuery.predicateForSamples(withStart: startDate, end: endDate, options: .strictStartDate)
-        let query = HKSampleQuery(sampleType: heartRateType, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: nil) { _, samples, error in
-            if let error = error {
-                call.reject("Error querying heart rate data: \(error.localizedDescription)")
-                return
-            }
-            
-            guard let heartRateSamples = samples as? [HKQuantitySample] else {
-                call.resolve(["heartRateRecords": []])
-                return
-            }
-            
-            var recordsArray: [[String: Any]] = []
-            let heartRateUnit = HKUnit.count().unitDivided(by: HKUnit.minute())
-            
-            for sample in heartRateSamples {
-                let recordObject: [String: Any] = [
-                    "id": sample.uuid.uuidString,
-                    "sourceBundleId": sample.sourceRevision.source.bundleIdentifier,
-                    "sourceName": sample.sourceRevision.source.name,
-                    "deviceManufacturer": sample.device?.manufacturer ?? "",
-                    "startTime": sample.startDate,
-                    "endTime": sample.endDate,
-                    "heartRateSamples": [
-                        [
-                            "timestamp": sample.startDate,
-                            "bpm": sample.quantity.doubleValue(for: heartRateUnit)
-                        ]
-                    ]
-                ]
-                
-                recordsArray.append(recordObject)
-            }
-            
-            call.resolve(["heartRateRecords": recordsArray])
+        guard let hrSamples = samples as? [HKQuantitySample] else {
+            call.resolve(["heartRateRecords": []])
+            return
         }
         
-        healthStore.execute(query)
+        let unit = HKUnit.count().unitDivided(by: .minute())
+        var payload = JSArray()
+        
+        for s in hrSamples {
+            var obj = JSObject()
+            obj["id"] = s.uuid.uuidString
+            obj["startTime"] = self.isoDateFormatter.string(from: s.startDate)
+            obj["endTime"] = self.isoDateFormatter.string(from: s.endDate)
+            obj["bpm"] = s.quantity.doubleValue(for: unit)
+            obj["sourceBundleId"] = s.sourceRevision.source.bundleIdentifier
+            obj["sourceName"] = s.sourceRevision.source.name
+            obj["deviceManufacturer"] = s.device?.manufacturer ?? ""
+            payload.append(obj)
+        }
+        
+        call.resolve(["heartRateRecords": payload])
     }
+    
+    healthStore.execute(query)
+}
+
     
     private func queryStepsAggregated(startDate: Date, endDate: Date, bucket: String, completion: @escaping ([[String: Any]]?, Error?) -> Void) {
         guard let stepsType = HKObjectType.quantityType(forIdentifier: .stepCount) else {
