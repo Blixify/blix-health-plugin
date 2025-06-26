@@ -540,32 +540,38 @@ class HealthPlugin : Plugin() {
                 val sleepRecords = healthConnectClient.readRecords(request)
                 val sleepArray = JSArray()
                 
-                for (record in sleepRecords.records) {
-                    val sleepObject = JSObject()
-                    sleepObject.put("id", record.metadata.id)
-                    sleepObject.put("startDate", record.startTime.toString())
-                    sleepObject.put("endDate", record.endTime.toString())
-                    sleepObject.put("title", record.title ?: "")
-                    sleepObject.put("notes", record.notes ?: "")
-                    sleepObject.put("sourceBundleId", record.metadata.dataOrigin.packageName)
-                    sleepObject.put("sourceName", record.metadata.device?.model ?: "")
-                    sleepObject.put("deviceManufacturer", record.metadata.device?.manufacturer ?: "")
-                    
-                    val duration = (record.endTime.epochSecond - record.startTime.epochSecond) / 60.0
-                    sleepObject.put("duration", duration)
-                    
-                    if (record.stages.isNotEmpty()) {
-                        val stagesArray = JSArray()
-                        for (stage in record.stages) {
-                            val stageObject = JSObject()
-                            stageObject.put("startDate", stage.startTime.toString())
-                            stageObject.put("endDate", stage.endTime.toString())
-                            stagesArray.put(stageObject)
+                for ((sessionIndex, record) in sleepRecords.records.withIndex()) {
+                    val sessionId = record.metadata.id
+                    record.stages.forEachIndexed { stageIndex, stage ->
+
+                        val segObj = JSObject()
+                        segObj.put("id", "${sessionId}_${stageIndex}")
+                        segObj.put("sessionId", sessionId)
+
+                        segObj.put("startDate", stage.startTime.toString())
+                        segObj.put("endDate",   stage.endTime.toString())
+
+                        val durationMin = Math.ceil((stage.endTime.epochSecond - stage.startTime.epochSecond) / 60.0).toInt()
+                        segObj.put("duration", durationMin)
+
+                        val mapStage = when (stage.stage) {
+                            SleepSessionRecord.STAGE_TYPE_AWAKE -> "AWAKE"
+                            SleepSessionRecord.STAGE_TYPE_AWAKE_IN_BED -> "IN_BED"
+                            SleepSessionRecord.STAGE_TYPE_DEEP -> "DEEP"
+                            SleepSessionRecord.STAGE_TYPE_LIGHT -> "LIGHT"
+                            SleepSessionRecord.STAGE_TYPE_OUT_OF_BED -> "OUT_OF_BED"
+                            SleepSessionRecord.STAGE_TYPE_SLEEPING -> "SLEEPING"
+                            else -> "UNKNOWN"
                         }
-                        sleepObject.put("stages", stagesArray)
+
+                        segObj.put("sleepStage", mapStage)
+                        segObj.put("sourceBundleId", record.metadata.dataOrigin.packageName)
+                        segObj.put("sourceName",     record.metadata.device?.model ?: "")
+                        segObj.put("deviceManufacturer", record.metadata.device?.manufacturer ?: "")
+                        sleepArray.put(segObj)
                     }
-                    sleepArray.put(sleepObject)
                 }
+
 
                 val result = JSObject()
                 result.put("sleep", sleepArray)
