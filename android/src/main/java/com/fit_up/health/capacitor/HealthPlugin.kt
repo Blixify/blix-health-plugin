@@ -459,59 +459,61 @@ class HealthPlugin : Plugin() {
 
     @PluginMethod
     fun queryHeartRate(call: PluginCall) {
-        val startDate = call.getString("startDate")
-        val endDate = call.getString("endDate")
-        
-        if (startDate == null || endDate == null) {
-            call.reject("Missing required parameters: startDate or endDate")
-            return
-        }
+    val startDate = call.getString("startDate")
+    val endDate   = call.getString("endDate")
+    if (startDate == null || endDate == null) {
+        call.reject("Missing required parameters: startDate or endDate")
+        return
+    }
 
-        val startDateTime = Instant.parse(startDate).atZone(ZoneId.systemDefault()).toLocalDateTime()
-        val endDateTime = Instant.parse(endDate).atZone(ZoneId.systemDefault()).toLocalDateTime()
+    val startDateTime = Instant.parse(startDate).atZone(ZoneId.systemDefault()).toLocalDateTime()
+    val endDateTime   =  Instant.parse(endDate).atZone(ZoneId.systemDefault()).toLocalDateTime()
 
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                if (!hasPermission(CapHealthPermission.READ_HEART_RATE)) {
-                    call.reject("Heart rate permission not granted")
-                    return@launch
-                }
-
-                val request = ReadRecordsRequest(
-                    HeartRateRecord::class, 
-                    TimeRangeFilter.between(startDateTime, endDateTime)
-                )
-                val heartRateRecords = healthConnectClient.readRecords(request)
-                val recordsArray = JSArray()
-                
-                for (record in heartRateRecords.records) {
-                    val recordObject = JSObject()
-                    recordObject.put("id", record.metadata.id)
-                    recordObject.put("sourceBundleId", record.metadata.dataOrigin.packageName)
-                    recordObject.put("sourceName", record.metadata.device?.model ?: "")
-                    recordObject.put("deviceManufacturer", record.metadata.device?.manufacturer ?: "")
-                    recordObject.put("startTime", record.startTime.toString())
-                    recordObject.put("endTime", record.endTime.toString())
-                    
-                    val samplesArray = JSArray()
-                    for (sample in record.samples) {
-                        val sampleObject = JSObject()
-                        sampleObject.put("timestamp", sample.time.toString())
-                        sampleObject.put("bpm", sample.beatsPerMinute)
-                        samplesArray.put(sampleObject)
-                    }
-                    recordObject.put("heartRateSamples", samplesArray)
-                    recordsArray.put(recordObject)
-                }
-                
-                val result = JSObject()
-                result.put("heartRateRecords", recordsArray)
-                call.resolve(result)
-            } catch (e: Exception) {
-                call.reject("Error querying heart rate data: ${e.message}")
+    CoroutineScope(Dispatchers.IO).launch {
+        try {
+            if (!hasPermission(CapHealthPermission.READ_HEART_RATE)) {
+                call.reject("Heart rate permission not granted")
+                return@launch
             }
+
+            val req = ReadRecordsRequest(
+                HeartRateRecord::class,
+                TimeRangeFilter.between(startDateTime, endDateTime)
+            )
+            val result = healthConnectClient.readRecords(req)
+            val samples = JSArray()
+
+            for (record in result.records) {
+                val metaId  = record.metadata.id
+                val source  = record.metadata.dataOrigin.packageName
+                val model   = record.metadata.device?.model ?: ""
+                val maker   = record.metadata.device?.manufacturer ?: ""
+
+                record.samples.forEachIndexed { idx, sample ->
+                    val obj = JSObject()
+                    obj.put("id", "${metaId}_$idx")           
+                    obj.put("startTime", sample.time.toString())
+                    obj.put("endTime",   sample.time.toString()) 
+                    obj.put("bpm", sample.beatsPerMinute)
+
+                    obj.put("sourceBundleId", source)
+                    obj.put("sourceName",     model)
+                    obj.put("deviceManufacturer", maker)
+
+                    samples.put(obj)
+                }
+            }
+
+            call.resolve(JSObject().apply {
+                put("heartRateRecords", samples)
+            })
+
+        } catch (e: Exception) {
+            call.reject("Error querying heart-rate data: ${e.message}")
         }
     }
+}
+
 
     @PluginMethod
     fun querySleep(call: PluginCall) {

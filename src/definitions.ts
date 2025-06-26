@@ -145,23 +145,23 @@ export interface QueryAggregatedResponse {
   aggregatedData: AggregatedSample[];
 }
 
-export interface HeartRateRecord {
-  heartRateSamples: HeartRateSample[];
-  id: string;
-  sourceBundleId: string;
-  sourceName: string;
-  deviceManufacturer: string;
-  startTime: string;
-  endTime: string;
-}
-
 export interface QueryHeartRateRequest {
   startDate: string;
   endDate: string;
 }
 
+export interface HeartRateSeriesSample {
+  id: string;
+  startTime: string;
+  endTime: string;
+  bpm: number;
+  sourceBundleId: string;
+  sourceName: string;
+  deviceManufacturer: string;
+}
+
 export interface QueryHeartRateResponse {
-  heartRateRecords: HeartRateRecord[];
+  heartRateRecords: HeartRateSeriesSample[];
 }
 
 export interface SleepSession {
