@@ -568,23 +568,38 @@ public class HealthPlugin: CAPPlugin, CAPBridgedPlugin {
             
             var sleepArray: [[String: Any]] = []
             
-            for sample in sleepSamples {
-                let sleepObject: [String: Any] = [
+            for (index, sample) in sleepSamples.enumerated() {
+                let stageString: String
+                if let stage = HKCategoryValueSleepAnalysis(rawValue: sample.value) {
+                    switch stage {
+                    case .inBed: stageString = "IN_BED"
+                    case .awake:                       stageString = "AWAKE"
+                    case .asleepCore,
+                        .asleepUnspecified,
+                        .asleep:                      stageString = "LIGHT"
+                    case .asleepDeep:                  stageString = "DEEP"
+                    case .asleepREM:                   stageString = "REM"
+                    default:                           stageString = "UNKNOWN"
+                    }
+                } else {
+                    stageString = "UNKNOWN"
+                }
+
+                let seg: [String: Any] = [
                     "id": sample.uuid.uuidString,
-                    "startDate": sample.startDate,
-                    "endDate": sample.endDate,
-                    "title": sample.metadata?["title"] as? String ?? "",
-                    "notes": sample.metadata?["notes"] as? String ?? "",
+                    "sessionId": sample.uuid.uuidString,
+                    "startDate": self.isoDateFormatter.string(from: sample.startDate),
+                    "endDate":   self.isoDateFormatter.string(from: sample.endDate),
+                    "duration": ceil(sample.endDate.timeIntervalSince(sample.startDate) / 60.0),
+                    "sleepStage": stageString,
                     "sourceBundleId": sample.sourceRevision.source.bundleIdentifier,
-                    "sourceName": sample.sourceRevision.source.name,
-                    "deviceManufacturer": sample.device?.manufacturer ?? "",
-                    "duration": sample.endDate.timeIntervalSince(sample.startDate) / 60.0,
-                    "sleepStage": self.sleepStageMapping[sample.value, default: "UNKNOWN"]
+                    "sourceName":     sample.sourceRevision.source.name,
+                    "deviceManufacturer": sample.device?.manufacturer ?? ""
                 ]
-                
-                sleepArray.append(sleepObject)
+
+                sleepArray.append(seg)
             }
-            
+
             call.resolve(["sleep": sleepArray])
         }
         
@@ -758,15 +773,6 @@ public class HealthPlugin: CAPPlugin, CAPBridgedPlugin {
         
         healthStore.execute(query)
     }
-    
-    let sleepStageMapping: [Int: String] = [
-        0: "UNKNOWN",
-        1: "AWAKE",
-        2: "LIGHT",
-        3: "DEEP",
-        4: "REM"
-    ]
-    
     
     let workoutTypeMapping: [UInt : String] =  [
         1 : "americanFootball" ,
