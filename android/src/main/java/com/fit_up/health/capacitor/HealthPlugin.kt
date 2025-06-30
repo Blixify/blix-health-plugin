@@ -413,10 +413,10 @@ class HealthPlugin : Plugin() {
                     workoutObject.put("workoutType", exerciseTypeMapping.getOrDefault(workout.exerciseType, "OTHER"))
                     workoutObject.put("title", workout.title)
                     val duration = if (workout.segments.isEmpty()) {
-                        workout.endTime.epochSecond - workout.startTime.epochSecond
+                        Math.ceil((workout.endTime.epochSecond - workout.startTime.epochSecond) / 60.0).toInt()
                     } else {
-                        workout.segments.map { it.endTime.epochSecond - it.startTime.epochSecond }
-                            .stream().mapToLong { it }.sum()
+                        Math.ceil(workout.segments.map { it.endTime.epochSecond - it.startTime.epochSecond }
+                            .stream().mapToLong { it }.sum() / 60.0).toInt()
                     }
                     workoutObject.put("duration", duration)
 

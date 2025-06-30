@@ -388,7 +388,7 @@ public class HealthPlugin: CAPPlugin, CAPBridgedPlugin {
                     "sourceName": workout.sourceRevision.source.name,
                     "sourceBundleId": workout.sourceRevision.source.bundleIdentifier,
                     "id": workout.uuid.uuidString,
-                    "duration": workout.duration,
+                    "duration": workout.duration > 0 ? Int(ceil(workout.duration / 60.0)) : 0,
                     "calories": workout.totalEnergyBurned?.doubleValue(for: .kilocalorie()) ?? 0,
                     "distance": workout.totalDistance?.doubleValue(for: .meter()) ?? 0
                 ]
