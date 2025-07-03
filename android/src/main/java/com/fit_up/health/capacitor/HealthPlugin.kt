@@ -562,6 +562,7 @@ class HealthPlugin : Plugin() {
                     recordObject.put("deviceManufacturer", record.metadata.device?.manufacturer ?: "")
                     recordObject.put("timestamp", record.time.toString())
                     recordObject.put("hrvValue", record.heartRateVariabilityMillis)
+                    recordObject.put("type", "RMSSD")
                     
                     recordsArray.put(recordObject)
                 }

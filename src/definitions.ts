@@ -185,6 +185,7 @@ export interface HRVRecord {
   deviceManufacturer: string;
   timestamp: string;
   hrvValue: number;
+  type: 'RMSSD' | 'SDNN';
 }
 
 export interface QueryHRVRequest {
