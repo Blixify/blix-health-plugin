@@ -63,6 +63,12 @@ export interface HealthPlugin {
   queryHeartRate(request: QueryHeartRateRequest): Promise<QueryHeartRateResponse>;
 
   /**
+   * Query HRV (Heart Rate Variability) data for a specific time range
+   * @param request
+   */
+  queryHRV(request: QueryHRVRequest): Promise<QueryHRVResponse>;
+
+  /**
    * Query sleep data for a specific time range
    * @param request
    */
@@ -73,6 +79,12 @@ export interface HealthPlugin {
    * @param request
    */
   querySteps(request: QueryStepsRequest): Promise<QueryStepsResponse>;
+
+  /**
+   * Query oxygen saturation data for a specific time range
+   * @param request
+   */
+  queryOxygenSaturation(request: QueryOxygenSaturationRequest): Promise<QueryOxygenSaturationResponse>;
 }
 
 export declare type HealthPermission =
@@ -82,9 +94,11 @@ export declare type HealthPermission =
   | 'READ_TOTAL_CALORIES'
   | 'READ_DISTANCE'
   | 'READ_HEART_RATE'
+  | 'READ_HRV'
   | 'READ_ROUTE'
   | 'READ_MINDFULNESS'
-  | 'READ_SLEEP';
+  | 'READ_SLEEP'
+  | 'READ_OXYGEN_SATURATION';
 
 export interface PermissionsRequest {
   permissions: HealthPermission[];
@@ -164,6 +178,25 @@ export interface QueryHeartRateResponse {
   heartRateRecords: HeartRateSeriesSample[];
 }
 
+export interface HRVRecord {
+  id: string;
+  sourceBundleId: string;
+  sourceName: string;
+  deviceManufacturer: string;
+  timestamp: string;
+  hrvValue: number;
+  type: 'RMSSD' | 'SDNN';
+}
+
+export interface QueryHRVRequest {
+  startDate: string;
+  endDate: string;
+}
+
+export interface QueryHRVResponse {
+  hrvRecords: HRVRecord[];
+}
+
 export interface SleepSession {
   id: string;
   startDate: string;
@@ -215,4 +248,22 @@ export interface AggregatedSampleWithMetadata extends AggregatedSample {
   sourceBundleId: string;
   deviceManufacturer: string;
   duration: number;
+}
+
+export interface QueryOxygenSaturationRequest {
+  startDate: string;
+  endDate: string;
+}
+
+export interface QueryOxygenSaturationResponse {
+  oxygenSaturationRecords: OxygenSaturationRecord[];
+}
+
+export interface OxygenSaturationRecord {
+  id: string;
+  sourceBundleId: string;
+  sourceName: string;
+  deviceManufacturer: string;
+  timestamp: string;
+  percentage: number;
 }

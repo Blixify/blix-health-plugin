@@ -16,6 +16,8 @@ import androidx.health.connect.client.records.DistanceRecord
 import androidx.health.connect.client.records.ExerciseRouteResult
 import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.records.HeartRateRecord
+import androidx.health.connect.client.records.HeartRateVariabilityRmssdRecord
+import androidx.health.connect.client.records.OxygenSaturationRecord
 import androidx.health.connect.client.records.StepsRecord
 import androidx.health.connect.client.records.TotalCaloriesBurnedRecord
 import androidx.health.connect.client.request.AggregateGroupByPeriodRequest
@@ -43,7 +45,7 @@ import kotlin.jvm.optionals.getOrDefault
 import androidx.health.connect.client.records.SleepSessionRecord
 
 enum class CapHealthPermission {
-    READ_STEPS, READ_WORKOUTS, READ_HEART_RATE, READ_ROUTE, READ_ACTIVE_CALORIES, READ_TOTAL_CALORIES, READ_DISTANCE, READ_SLEEP;
+    READ_STEPS, READ_WORKOUTS, READ_HEART_RATE, READ_HRV, READ_ROUTE, READ_ACTIVE_CALORIES, READ_TOTAL_CALORIES, READ_DISTANCE, READ_SLEEP, READ_OXYGEN_SATURATION;
 
     companion object {
         fun from(s: String): CapHealthPermission? {
@@ -85,12 +87,20 @@ enum class CapHealthPermission {
             strings = ["android.permission.health.READ_HEART_RATE"]
         ),
         Permission(
+            alias = "READ_HRV",
+            strings = ["android.permission.health.READ_HEART_RATE_VARIABILITY"]
+        ),
+        Permission(
             alias = "READ_ROUTE",
             strings = ["android.permission.health.READ_EXERCISE_ROUTE"]
         ),
         Permission(
             alias = "READ_SLEEP",
             strings = ["android.permission.health.READ_SLEEP"]
+        ),
+        Permission(
+            alias = "READ_OXYGEN_SATURATION",
+            strings = ["android.permission.health.READ_OXYGEN_SATURATION"]
         )
     ]
 )
@@ -144,11 +154,13 @@ class HealthPlugin : Plugin() {
         Pair(CapHealthPermission.READ_WORKOUTS, "android.permission.health.READ_EXERCISE"),
         Pair(CapHealthPermission.READ_ROUTE, "android.permission.health.READ_EXERCISE_ROUTE"),
         Pair(CapHealthPermission.READ_HEART_RATE, "android.permission.health.READ_HEART_RATE"),
+        Pair(CapHealthPermission.READ_HRV, "android.permission.health.READ_HEART_RATE_VARIABILITY"),
         Pair(CapHealthPermission.READ_ACTIVE_CALORIES, "android.permission.health.READ_ACTIVE_CALORIES_BURNED"),
         Pair(CapHealthPermission.READ_TOTAL_CALORIES, "android.permission.health.READ_TOTAL_CALORIES_BURNED"),
         Pair(CapHealthPermission.READ_DISTANCE, "android.permission.health.READ_DISTANCE"),
         Pair(CapHealthPermission.READ_STEPS, "android.permission.health.READ_STEPS"),
-        Pair(CapHealthPermission.READ_SLEEP, "android.permission.health.READ_SLEEP")
+        Pair(CapHealthPermission.READ_SLEEP, "android.permission.health.READ_SLEEP"),
+        Pair(CapHealthPermission.READ_OXYGEN_SATURATION, "android.permission.health.READ_OXYGEN_SATURATION")
     )
 
     // Check if a set of permissions are granted
@@ -514,6 +526,103 @@ class HealthPlugin : Plugin() {
     }
 }
 
+
+    @PluginMethod
+    fun queryHRV(call: PluginCall) {
+        val startDate = call.getString("startDate")
+        val endDate = call.getString("endDate")
+        
+        if (startDate == null || endDate == null) {
+            call.reject("Missing required parameters: startDate or endDate")
+            return
+        }
+
+        val startDateTime = Instant.parse(startDate).atZone(ZoneId.systemDefault()).toLocalDateTime()
+        val endDateTime = Instant.parse(endDate).atZone(ZoneId.systemDefault()).toLocalDateTime()
+
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                if (!hasPermission(CapHealthPermission.READ_HRV)) {
+                    call.reject("HRV permission not granted")
+                    return@launch
+                }
+
+                val request = ReadRecordsRequest(
+                    HeartRateVariabilityRmssdRecord::class, 
+                    TimeRangeFilter.between(startDateTime, endDateTime)
+                )
+                val hrvRecords = healthConnectClient.readRecords(request)
+                val recordsArray = JSArray()
+                
+                for (record in hrvRecords.records) {
+                    val recordObject = JSObject()
+                    recordObject.put("id", record.metadata.id)
+                    recordObject.put("sourceBundleId", record.metadata.dataOrigin.packageName)
+                    recordObject.put("sourceName", record.metadata.device?.model ?: "")
+                    recordObject.put("deviceManufacturer", record.metadata.device?.manufacturer ?: "")
+                    recordObject.put("timestamp", record.time.toString())
+                    recordObject.put("hrvValue", record.heartRateVariabilityMillis)
+                    recordObject.put("type", "RMSSD")
+                    
+                    recordsArray.put(recordObject)
+                }
+                
+                val result = JSObject()
+                result.put("hrvRecords", recordsArray)
+                call.resolve(result)
+            } catch (e: Exception) {
+                call.reject("Error querying HRV data: ${e.message}")
+            }
+        }
+    }
+
+    @PluginMethod
+    fun queryOxygenSaturation(call: PluginCall) {
+        val startDate = call.getString("startDate")
+        val endDate = call.getString("endDate")
+        
+        if (startDate == null || endDate == null) {
+            call.reject("Missing required parameters: startDate or endDate")
+            return
+        }
+
+        val startDateTime = Instant.parse(startDate).atZone(ZoneId.systemDefault()).toLocalDateTime()
+        val endDateTime = Instant.parse(endDate).atZone(ZoneId.systemDefault()).toLocalDateTime()
+
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                if (!hasPermission(CapHealthPermission.READ_OXYGEN_SATURATION)) {
+                    call.reject("Oxygen saturation permission not granted")
+                    return@launch
+                }
+
+                val request = ReadRecordsRequest(
+                    OxygenSaturationRecord::class, 
+                    TimeRangeFilter.between(startDateTime, endDateTime)
+                )
+                val oxygenSaturationRecords = healthConnectClient.readRecords(request)
+                val recordsArray = JSArray()
+                
+                for (record in oxygenSaturationRecords.records) {
+                    val recordObject = JSObject()
+                    recordObject.put("id", record.metadata.id)
+                    recordObject.put("sourceBundleId", record.metadata.dataOrigin.packageName)
+                    recordObject.put("sourceName", record.metadata.device?.model ?: "")
+                    recordObject.put("deviceManufacturer", record.metadata.device?.manufacturer ?: "")
+                    recordObject.put("timestamp", record.time.toString())
+                    recordObject.put("percentage", record.percentage.value)
+                    
+                    recordsArray.put(recordObject)
+                }
+                
+                val result = JSObject()
+                result.put("oxygenSaturationRecords", recordsArray)
+                call.resolve(result)
+            } catch (e: Exception) {
+                call.reject("Error querying oxygen saturation data: ${e.message}")
+            }
+        }
+    }
 
     @PluginMethod
     fun querySleep(call: PluginCall) {
