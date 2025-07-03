@@ -19,7 +19,8 @@ public class HealthPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "queryWorkouts", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "querySleep", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "querySteps", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "queryHeartRate", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "queryHeartRate", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "queryHRV", returnType: CAPPluginReturnPromise)
     ]
     
     let healthStore = HKHealthStore()
@@ -139,6 +140,8 @@ public class HealthPlugin: CAPPlugin, CAPBridgedPlugin {
             return [HKObjectType.workoutType()].compactMap{$0}
         case "READ_HEART_RATE":
             return  [HKObjectType.quantityType(forIdentifier: .heartRate)].compactMap{$0}
+        case "READ_HRV":
+            return  [HKObjectType.quantityType(forIdentifier: .heartRateVariabilitySDNN)].compactMap{$0}
         case "READ_ROUTE":
             return  [HKSeriesType.workoutRoute()].compactMap{$0}
         case "READ_DISTANCE":
@@ -718,6 +721,57 @@ public class HealthPlugin: CAPPlugin, CAPBridgedPlugin {
     healthStore.execute(query)
 }
 
+    @objc func queryHRV(_ call: CAPPluginCall) {
+        guard let startDateString = call.getString("startDate"),
+              let endDateString = call.getString("endDate"),
+              let startDate = self.isoDateFormatter.date(from: startDateString),
+              let endDate = self.isoDateFormatter.date(from: endDateString) else {
+            call.reject("Missing required parameters: startDate or endDate")
+            return
+        }
+        
+        guard let hrvType = HKObjectType.quantityType(forIdentifier: .heartRateVariabilitySDNN) else {
+            call.reject("Heart rate variability type unavailable")
+            return
+        }
+        
+        let predicate = HKQuery.predicateForSamples(withStart: startDate, end: endDate, options: .strictStartDate)
+        
+        let query = HKSampleQuery(sampleType: hrvType, predicate: predicate,
+                                  limit: HKObjectQueryNoLimit,
+                                  sortDescriptors: nil) { [weak self] _, samples, error in
+            guard let self = self else { return }
+            
+            if let error = error {
+                call.reject("Error querying HRV data: \(error.localizedDescription)")
+                return
+            }
+            
+            guard let hrvSamples = samples as? [HKQuantitySample] else {
+                call.resolve(["hrvRecords": []])
+                return
+            }
+            
+            let unit = HKUnit.secondUnit(with: .milli)
+            var payload = JSArray()
+            
+            for sample in hrvSamples {
+                var obj = JSObject()
+                obj["id"] = sample.uuid.uuidString
+                obj["timestamp"] = self.isoDateFormatter.string(from: sample.startDate)
+                obj["hrvValue"] = sample.quantity.doubleValue(for: unit)
+                obj["type"] = "SDNN"
+                obj["sourceBundleId"] = sample.sourceRevision.source.bundleIdentifier
+                obj["sourceName"] = sample.sourceRevision.source.name
+                obj["deviceManufacturer"] = sample.device?.manufacturer ?? ""
+                payload.append(obj)
+            }
+            
+            call.resolve(["hrvRecords": payload])
+        }
+        
+        healthStore.execute(query)
+    }
     
     private func queryStepsAggregated(startDate: Date, endDate: Date, bucket: String, completion: @escaping ([[String: Any]]?, Error?) -> Void) {
         guard let stepsType = HKObjectType.quantityType(forIdentifier: .stepCount) else {
