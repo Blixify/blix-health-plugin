@@ -1,10 +1,12 @@
 name: Publish npm package and Create GitHub Release
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - production
 
 permissions:
-  contents: write  # Grant write permission to push the tag
+  contents: write # Grant write permission to push the tag
 
 jobs:
   build-and-publish:
@@ -14,7 +16,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0  # Ensures the entire Git history is available
+          fetch-depth: 0 # Ensures the entire Git history is available
 
       - name: Set up Node.js
         uses: actions/setup-node@v3
@@ -27,47 +29,47 @@ jobs:
         run: npm install
 
       - name: Build the project
-        run: npm run build  # adjust the build command if necessary
+        run: npm run build # adjust the build command if necessary
 
-      - name: Configure npm for authentication
-        run: echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
+      # - name: Configure npm for authentication
+      #   run: echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
 
-      - name: Get package version
-        id: get_version
-        run: |
-          VERSION=$(node -p "require('./package.json').version")
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-          
-      - name: Get the last Git tag
-        id: last_tag
-        run: echo "LAST_TAG=$(git describe --tags --abbrev=0)" >> $GITHUB_ENV
+      # - name: Get package version
+      #   id: get_version
+      #   run: |
+      #     VERSION=$(node -p "require('./package.json').version")
+      #     echo "VERSION=$VERSION" >> $GITHUB_ENV
 
-      - name: Get release notes from commits
-        id: release_notes
-        run: |
-          echo "Release Notes:" > release_notes.txt
-          git log ${{ env.LAST_TAG }}..HEAD --pretty=format:"- %s" >> release_notes.txt
-        shell: bash
+      # - name: Get the last Git tag
+      #   id: last_tag
+      #   run: echo "LAST_TAG=$(git describe --tags --abbrev=0)" >> $GITHUB_ENV
 
-      - name: Show release notes
-        run: cat release_notes.txt
+      # - name: Get release notes from commits
+      #   id: release_notes
+      #   run: |
+      #     echo "Release Notes:" > release_notes.txt
+      #     git log ${{ env.LAST_TAG }}..HEAD --pretty=format:"- %s" >> release_notes.txt
+      #   shell: bash
 
-      - name: Create Git tag
-        run: |
-          git tag v${{ env.VERSION }}
-          git push origin v${{ env.VERSION }}
+      # - name: Show release notes
+      #   run: cat release_notes.txt
 
-      - name: Create GitHub release
-        uses: actions/create-release@v1
-        with:
-          tag_name: v${{ env.VERSION }}
-          release_name: Release v${{ env.VERSION }}
-          body_path: ./release_notes.txt
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          
+      # - name: Create Git tag
+      #   run: |
+      #     git tag v${{ env.VERSION }}
+      #     git push origin v${{ env.VERSION }}
+
+      # - name: Create GitHub release
+      #   uses: actions/create-release@v1
+      #   with:
+      #     tag_name: v${{ env.VERSION }}
+      #     release_name: Release v${{ env.VERSION }}
+      #     body_path: ./release_notes.txt
+      #     draft: false
+      #     prerelease: false
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Publish to npm
         run: npm publish
         env:

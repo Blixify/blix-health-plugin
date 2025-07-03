@@ -1,6 +1,6 @@
 {
-  "name": "capacitor-health",
-  "version": "0.0.14",
+  "name": "blix-health-plugin",
+  "version": "0.0.7",
   "description": "Capacitor plugin for Apple Health and Google Health Connect",
   "main": "dist/plugin.cjs.js",
   "module": "dist/esm/index.js",
@@ -13,16 +13,16 @@
     "ios/Sources",
     "ios/Tests",
     "Package.swift",
-    "CapacitorHealth.podspec"
+    "BlixHealthPlugin.podspec"
   ],
-  "author": "Martin",
+  "author": "Blixify",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/mley/capacitor-health.git"
+    "url": "git+https://github.com/Blixify/blix-health-plugin.git"
   },
   "bugs": {
-    "url": "https://github.com/mley/capacitor-health/issues"
+    "url": "https://github.com/Blixify/blix-health-plugin/issues"
   },
   "keywords": [
     "capacitor",
@@ -31,7 +31,7 @@
   ],
   "scripts": {
     "verify": "npm run verify:ios && npm run verify:android && npm run verify:web",
-    "verify:ios": "xcodebuild -scheme CapacitorHealth -destination generic/platform=iOS",
+    "verify:ios": "xcodebuild -scheme BlixHealthPlugin -destination generic/platform=iOS",
     "verify:android": "cd android && ./gradlew clean build test && cd ..",
     "verify:web": "npm run build",
     "lint": "npm run eslint && npm run prettier -- --check && npm run swiftlint -- lint",

@@ -16,7 +16,10 @@ public class HealthPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "requestHealthPermissions", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "openAppleHealthSettings", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "queryAggregated", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "queryWorkouts", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "queryWorkouts", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "querySleep", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "querySteps", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "queryHeartRate", returnType: CAPPluginReturnPromise)
     ]
     
     let healthStore = HKHealthStore()
@@ -26,12 +29,70 @@ public class HealthPlugin: CAPPlugin, CAPBridgedPlugin {
         call.resolve(["available": isAvailable])
     }
     
+    // @objc func checkHealthPermissions(_ call: CAPPluginCall) {
+    //     call.reject("not implemented")
+    // }
+
     @objc func checkHealthPermissions(_ call: CAPPluginCall) {
-        call.reject("not implemented")
+    guard HKHealthStore.isHealthDataAvailable() else {
+        call.reject("HealthKit is not available on this device")
+        return
+    }
+    
+    guard let permissions = call.getArray("permissions") as? [String] else {
+        call.reject("Must provide permissions to check")
+        return
+    }
+    
+    let dispatchGroup = DispatchGroup()
+    var result: [String: Bool] = [:]
+    
+    for permission in permissions {
+        let sampleTypes = permissionToHKObjectType(permission)
+            .compactMap { $0 as? HKSampleType }
+        
+        guard let sampleType = sampleTypes.first else {
+            result[permission] = false
+            continue
+        }
+        
+        dispatchGroup.enter()
+        let query = HKSampleQuery(sampleType: sampleType,
+                                  predicate: nil,
+                                  limit: 1,
+                                  sortDescriptors: nil) { _, _, error in
+                                    
+            if let hkError = error as? HKError {
+                switch hkError.code {
+                case .errorAuthorizationDenied,
+                     .errorAuthorizationNotDetermined:
+                    
+                    result[permission] = false
+                default:
+                    result[permission] = true
+                }
+            } else {
+                // No error ⇒ we have read access, even if zero samples
+                result[permission] = true
+            }
+                dispatchGroup.leave()
+            }
+        
+            healthStore.execute(query)
+        }
+    
+        dispatchGroup.notify(queue: .main) {
+            call.resolve(["permissions": result])
+        }
     }
     
     
     @objc func requestHealthPermissions(_ call: CAPPluginCall) {
+        if !HKHealthStore.isHealthDataAvailable() {
+            call.reject("HealthKit is not available on this device")
+            return
+        }
+        
         guard let permissions = call.getArray("permissions") as? [String] else {
             call.reject("Invalid permissions format")
             return
@@ -89,6 +150,8 @@ public class HealthPlugin: CAPPlugin, CAPBridgedPlugin {
             ].compactMap{$0}
         case "READ_MINDFULNESS":
             return [HKObjectType.categoryType(forIdentifier: .mindfulSession)!].compactMap{$0}
+        case "READ_SLEEP":
+            return [HKObjectType.categoryType(forIdentifier: .sleepAnalysis)!].compactMap{$0}
         default:
             return []
         }
@@ -325,7 +388,7 @@ public class HealthPlugin: CAPPlugin, CAPBridgedPlugin {
                     "sourceName": workout.sourceRevision.source.name,
                     "sourceBundleId": workout.sourceRevision.source.bundleIdentifier,
                     "id": workout.uuid.uuidString,
-                    "duration": workout.duration,
+                    "duration": workout.duration > 0 ? Int(ceil(workout.duration / 60.0)) : 0,
                     "calories": workout.totalEnergyBurned?.doubleValue(for: .kilocalorie()) ?? 0,
                     "distance": workout.totalDistance?.doubleValue(for: .meter()) ?? 0
                 ]
@@ -477,6 +540,238 @@ public class HealthPlugin: CAPPlugin, CAPBridgedPlugin {
         healthStore.execute(locationQuery)
     }
     
+    @objc func querySleep(_ call: CAPPluginCall) {
+        guard let startDateString = call.getString("startDate"),
+              let endDateString = call.getString("endDate"),
+              let startDate = self.isoDateFormatter.date(from: startDateString),
+              let endDate = self.isoDateFormatter.date(from: endDateString) else {
+            call.reject("Missing required parameters: startDate or endDate")
+            return
+        }
+        
+        guard let sleepType = HKObjectType.categoryType(forIdentifier: .sleepAnalysis) else {
+            call.reject("Sleep analysis type unavailable")
+            return
+        }
+        
+        let predicate = HKQuery.predicateForSamples(withStart: startDate, end: endDate, options: .strictStartDate)
+        let query = HKSampleQuery(sampleType: sleepType, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: nil) { _, samples, error in
+            if let error = error {
+                call.reject("Error querying sleep data: \(error.localizedDescription)")
+                return
+            }
+            
+            guard let sleepSamples = samples as? [HKCategorySample] else {
+                call.resolve(["sleep": []])
+                return
+            }
+            
+            var sleepArray: [[String: Any]] = []
+            
+            for (index, sample) in sleepSamples.enumerated() {
+                let stageString: String
+                if let stage = HKCategoryValueSleepAnalysis(rawValue: sample.value) {
+                    switch stage {
+                    case .inBed: stageString = "IN_BED"
+                    case .awake:                       stageString = "AWAKE"
+                    case .asleepCore,
+                        .asleepUnspecified,
+                        .asleep:                      stageString = "LIGHT"
+                    case .asleepDeep:                  stageString = "DEEP"
+                    case .asleepREM:                   stageString = "REM"
+                    default:                           stageString = "UNKNOWN"
+                    }
+                } else {
+                    stageString = "UNKNOWN"
+                }
+
+                let seg: [String: Any] = [
+                    "id": sample.uuid.uuidString,
+                    "sessionId": sample.uuid.uuidString,
+                    "startDate": self.isoDateFormatter.string(from: sample.startDate),
+                    "endDate":   self.isoDateFormatter.string(from: sample.endDate),
+                    "duration": ceil(sample.endDate.timeIntervalSince(sample.startDate) / 60.0),
+                    "sleepStage": stageString,
+                    "sourceBundleId": sample.sourceRevision.source.bundleIdentifier,
+                    "sourceName":     sample.sourceRevision.source.name,
+                    "deviceManufacturer": sample.device?.manufacturer ?? ""
+                ]
+
+                sleepArray.append(seg)
+            }
+
+            call.resolve(["sleep": sleepArray])
+        }
+        
+        healthStore.execute(query)
+    }
+    
+    @objc func querySteps(_ call: CAPPluginCall) {
+        guard let startDateString = call.getString("startDate"),
+              let endDateString = call.getString("endDate"),
+              let startDate = self.isoDateFormatter.date(from: startDateString),
+              let endDate = self.isoDateFormatter.date(from: endDateString) else {
+            call.reject("Missing required parameters: startDate or endDate")
+            return
+        }
+        
+        let bucket = call.getString("bucket")
+        
+        if let bucket = bucket {
+            self.queryStepsAggregated(startDate: startDate, endDate: endDate, bucket: bucket) { result, error in
+                if let error = error {
+                    call.reject("Error querying aggregated steps: \(error.localizedDescription)")
+                } else if let result = result {
+                    call.resolve(["aggregatedData": result])
+                }
+            }
+        } else {
+            guard let stepsType = HKObjectType.quantityType(forIdentifier: .stepCount) else {
+                call.reject("Step count type unavailable")
+                return
+            }
+            
+            let predicate = HKQuery.predicateForSamples(withStart: startDate, end: endDate, options: .strictStartDate)
+            let query = HKSampleQuery(sampleType: stepsType, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: nil) { _, samples, error in
+                if let error = error {
+                    call.reject("Error querying steps data: \(error.localizedDescription)")
+                    return
+                }
+                
+                guard let stepSamples = samples as? [HKQuantitySample] else {
+                    call.resolve(["steps": []])
+                    return
+                }
+                
+                var stepsArray: [[String: Any]] = []
+                
+                for sample in stepSamples {
+                    let stepObject: [String: Any] = [
+                        "id": sample.uuid.uuidString,
+                        "startDate": sample.startDate,
+                        "endDate": sample.endDate,
+                        "value": sample.quantity.doubleValue(for: HKUnit.count()),
+                        "sourceBundleId": sample.sourceRevision.source.bundleIdentifier,
+                        "sourceName": sample.sourceRevision.source.name,
+                        "deviceManufacturer": sample.device?.manufacturer ?? ""
+                    ]
+                    
+                    stepsArray.append(stepObject)
+                }
+                
+                call.resolve(["steps": stepsArray])
+            }
+            
+            healthStore.execute(query)
+        }
+    }
+    
+   @objc func queryHeartRate(_ call: CAPPluginCall) {
+        guard let startDateString = call.getString("startDate"),
+            let endDateString   = call.getString("endDate"),
+            let startDate       = self.isoDateFormatter.date(from: startDateString),
+            let endDate         = self.isoDateFormatter.date(from: endDateString) else {
+                call.reject("Missing required parameters: startDate or endDate")
+                return
+            }
+    
+        guard let heartRateType = HKObjectType.quantityType(forIdentifier: .heartRate) else {
+                call.reject("Heart rate type unavailable")
+                return
+            }
+    
+        let predicate = HKQuery.predicateForSamples(withStart: startDate, end: endDate, options: .strictStartDate)
+    
+        let query = HKSampleQuery(sampleType: heartRateType, predicate:  predicate,
+                              limit:      HKObjectQueryNoLimit,
+                              sortDescriptors: nil) { [weak self] _, samples, error in
+        guard let self = self else { return }
+        
+        if let error = error {
+            call.reject("Error querying heart-rate data: \(error.localizedDescription)")
+            return
+        }
+        
+        guard let hrSamples = samples as? [HKQuantitySample] else {
+            call.resolve(["heartRateRecords": []])
+            return
+        }
+        
+        let unit = HKUnit.count().unitDivided(by: .minute())
+        var payload = JSArray()
+        
+        for s in hrSamples {
+            var obj = JSObject()
+            obj["id"] = s.uuid.uuidString
+            obj["startTime"] = self.isoDateFormatter.string(from: s.startDate)
+            obj["endTime"] = self.isoDateFormatter.string(from: s.endDate)
+            obj["bpm"] = s.quantity.doubleValue(for: unit)
+            obj["sourceBundleId"] = s.sourceRevision.source.bundleIdentifier
+            obj["sourceName"] = s.sourceRevision.source.name
+            obj["deviceManufacturer"] = s.device?.manufacturer ?? ""
+            payload.append(obj)
+        }
+        
+        call.resolve(["heartRateRecords": payload])
+    }
+    
+    healthStore.execute(query)
+}
+
+    
+    private func queryStepsAggregated(startDate: Date, endDate: Date, bucket: String, completion: @escaping ([[String: Any]]?, Error?) -> Void) {
+        guard let stepsType = HKObjectType.quantityType(forIdentifier: .stepCount) else {
+            completion(nil, NSError(domain: "HealthKit", code: -1, userInfo: [NSLocalizedDescriptionKey: "Step count type unavailable"]))
+            return
+        }
+        
+        guard let interval = calculateInterval(bucket: bucket) else {
+            completion(nil, NSError(domain: "HealthKit", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid bucket"]))
+            return
+        }
+        
+        let predicate = HKQuery.predicateForSamples(withStart: startDate, end: endDate, options: .strictStartDate)
+        
+        let query = HKStatisticsCollectionQuery(
+            quantityType: stepsType,
+            quantitySamplePredicate: predicate,
+            options: [.cumulativeSum],
+            anchorDate: startDate,
+            intervalComponents: interval
+        )
+        
+        query.initialResultsHandler = { query, result, error in
+            if let error = error {
+                completion(nil, error)
+                return
+            }
+            
+            var aggregatedSamples: [[String: Any]] = []
+            
+            result?.enumerateStatistics(from: startDate, to: endDate) { statistics, stop in
+                if let sum = statistics.sumQuantity() {
+                    let value = sum.doubleValue(for: HKUnit.count())
+                    let durationMinutes = statistics.endDate.timeIntervalSince(statistics.startDate) / 60.0
+                    
+                    let aggregatedObject: [String: Any] = [
+                        "startDate": statistics.startDate,
+                        "endDate": statistics.endDate,
+                        "value": value,
+                        "duration": Int(ceil(durationMinutes)),
+                        "sourceName": "", 
+                        "sourceBundleId": "",
+                        "deviceManufacturer": ""
+                    ]
+                    
+                    aggregatedSamples.append(aggregatedObject)
+                }
+            }
+            
+            completion(aggregatedSamples, nil)
+        }
+        
+        healthStore.execute(query)
+    }
     
     let workoutTypeMapping: [UInt : String] =  [
         1 : "americanFootball" ,
